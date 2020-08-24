@@ -43,9 +43,9 @@ void read_wek(data_type weight_temp[Tm][Tn][Tk][Tk],dma_data* weight, int to, in
 #pragma HLS INLINE
 	int too,tii, tkk1,tkk2;
 	dma_data tmp;
-	loop_load_weight:
+
 	for (too = 0; too < Tm; too+=2) {
-        for (tii = 0; tii < Tm; tii++) {
+        for (tii = 0; tii < Tn; tii++) {
             for(tkk1 =0; tkk1<K; tkk1++){
                 for(tkk2 =0; tkk2<K; tkk2++){
                     #pragma HLS PIPELINE
@@ -78,12 +78,12 @@ void comp_engine_conv_2d(
                             for (tii = 0; tii < Tn; ++tii) {
                 #pragma HLS UNROLL
                                 #pragma HLS DEPENDENCE variable=feature_temp inter false
-                                tmp1=feature_temp[tncomp*Tn+tii][trr*S+tkk1][tcc*S+tkk2];
+                                tmp1=feature_temp[tncomp+tii][trr*S+tkk1][tcc*S+tkk2];
                                 for (too = 0; too < Tm; ++too) {
                                     #pragma HLS DEPENDENCE variable=output_core_temp inter false
                 #pragma HLS UNROLL
-                                    output_core_temp[tmcomp*Tn+too][trr][tcc]+=
-                                    tmp1*weight_temp[tmcomp*Tn+too][tncomp*Tn+tii][tkk1][tkk2];
+                                    output_core_temp[tmcomp+too][trr][tcc]+=
+                                    tmp1*weight_temp[tmcomp+too][tncomp+tii][tkk1][tkk2];
                                     
                                 }
                             }
@@ -125,6 +125,9 @@ void single_conv_k(
             for (to = 0; to < M; to += TmBuff) {
                 for (ti = 0; ti < N; ti += TnBuff) {
                     read_wek<Tk,TmW,TnW>(weight_temp,weight,to,ti,K,N,Base_addr1);
+                    //read_ifmap_conv2d<Tri,Tci,TnBuff>(feature_temp,feature,tr,ti,tc,H,C,K,Base_addr2);
+                    //comp_engine_conv_2d<Tr,Tc,TmBuff,TnBuff,Tm,Tn,TmW,TnW,Tri,Tci,Tk>(weight_temp,feature_temp,output_core_temp,K,S);
+
                     if (lr_i==0){
 
                         //ping pong logic for index shifting
@@ -135,12 +138,14 @@ void single_conv_k(
                         ti_r=ti+TnBuff;
                         if (ti_r==N){
                             ti_r=0;
-                            tr_r=tr+Tr;
-                            if(tr_r==C){
-                                tr_r=0;
-                                tc_r=tc_r+Tc;
-                                if(tc_r==C){
-                                    tc_r=0;
+                            if(to == M-TmBuff ){
+                                tr_r=tr+Tr;
+                                if(tr_r==C){
+                                    tr_r=0;
+                                    tc_r=tc_r+Tc;
+                                    if(tc_r==C){
+                                        tc_r=0;
+                                    }
                                 }
                             }
                         }
@@ -160,12 +165,14 @@ void single_conv_k(
                         ti_r=ti+TnBuff;
                         if (ti_r==N){
                             ti_r=0;
-                            tr_r=tr+Tr;
-                            if(tr_r==C){
-                                tr_r=0;
-                                tc_r=tc_r+Tc;
-                                if(tc_r==C){
-                                    tc_r=0;
+                            if(to == M-TmBuff ){
+                                tr_r=tr+Tr;
+                                if(tr_r==C){
+                                    tr_r=0;
+                                    tc_r=tc_r+Tc;
+                                    if(tc_r==C){
+                                        tc_r=0;
+                                    }
                                 }
                             }
                         }
@@ -177,7 +184,7 @@ void single_conv_k(
 
                 }
 
-            for (too = 0; too < Tm; too+=2) {
+            for (too = 0; too < TmBuff; too+=2) {
                 for (trr = 0; trr < Tr; trr++) {
                     for (tcc = 0; tcc < Tc; tcc++) {
                         #pragma HLS PIPELINE
@@ -192,7 +199,7 @@ void single_conv_k(
             for (trr = 0; trr < Tr; ++trr) {
                 for (tcc = 0; tcc < Tc; ++tcc) {
                     #pragma HLS PIPELINE
-                    for (too = 0; too < Tm; ++too) {
+                    for (too = 0; too < TmBuff; ++too) {
                         #pragma HLS UNROLL
                             output_core_temp[too][trr][tcc] = 0;
                     }
@@ -246,7 +253,7 @@ void conv_k_wrapper(
 	//#pragma HLS ARRAY_PARTITION variable=weight_temp complete dim=3
 	//#pragma HLS ARRAY_PARTITION variable=weight_temp complete dim=4
 
-	data_type feature_temp1[TmBuff][Tri][Tci] = { 0 };
+	data_type feature_temp1[TnBuff][Tri][Tci] = { 0 };
 	#pragma HLS RESOURCE variable=feature_temp1 core=RAM_2P_BRAM
 	#pragma HLS ARRAY_PARTITION variable=feature_temp1 complete dim=1
 	//#pragma HLS ARRAY_PARTITION variable=feature_temp1 complete dim=2
@@ -321,9 +328,9 @@ void unet_top (
 dma_data* weight1,
 dma_data* feature1,
 dma_data* output_core1,
-// dma_data* weight2,
+dma_data* weight2,
 dma_data* feature2,
-// dma_data* output_core2,
+dma_data* output_core2,
 // dma_data* weight3,
 // dma_data* feature3,
 // dma_data* output_core3,
@@ -403,9 +410,9 @@ int con,
  // ap_uint<32> Base_addr31,
  // ap_uint<32>  Base_addr32,
  // ap_uint<32>  Base_addr33,
- // ap_uint<32> Base_addr34,
+ap_uint<32> Base_addr34,
 ap_uint<32>  Base_addr35,
- // ap_uint<32>  Base_addr36,
+ap_uint<32>  Base_addr36,
 ap_uint<32> Base_addr37,
 ap_uint<32>  Base_addr38,
 ap_uint<32>  Base_addr39
@@ -436,15 +443,15 @@ ap_uint<32>  Base_addr39
 #pragma HLS data_pack variable=output_core1
 
 
- // #pragma HLS INTERFACE s_axilite port=Base_addr34 bundle=CRTL_BUS
+#pragma HLS INTERFACE s_axilite port=Base_addr34 bundle=CRTL_BUS
 #pragma HLS INTERFACE s_axilite port=Base_addr35 bundle=CRTL_BUS
- // #pragma HLS INTERFACE s_axilite port=Base_addr36 bundle=CRTL_BUS
- // #pragma HLS INTERFACE m_axi depth=dM1*dK1*dK1/4 port=weight2
+#pragma HLS INTERFACE s_axilite port=Base_addr36 bundle=CRTL_BUS
+#pragma HLS INTERFACE m_axi depth=M2*N2*K2*K2/2 port=weight2
 #pragma HLS INTERFACE m_axi depth=M2*H2*H2/2 port=feature2
- // #pragma HLS INTERFACE m_axi depth=dM1*dC1*dC1/4 port=output_core2
- // #pragma HLS data_pack variable=weight2
+#pragma HLS INTERFACE m_axi depth=M2*C2*C2/2 port=output_core2
+#pragma HLS data_pack variable=weight2
 #pragma HLS data_pack variable=feature2
- // #pragma HLS data_pack variable=output_core2
+#pragma HLS data_pack variable=output_core2
 
 // #pragma HLS INTERFACE s_axilite port=Base_addr31 bundle=CRTL_BUS
 // #pragma HLS INTERFACE s_axilite port=Base_addr32 bundle=CRTL_BUS
@@ -627,6 +634,16 @@ ap_uint<32>  Base_addr39
       act1: tanh_layer(output_core1,weight1, M1,N1,C1,K1,Base_addr37,Base_addr39);
       
       max1: max_pool(feature2,output_core1,M1,C2,C1,Base_addr35,Base_addr39);
+      
+      
+      
+      conv2: conv_k_wrapper<
+                             TmBuff2, TnBuff2,Tr2,Tc2,Tm2,Tn2, TmBuff2,TnBuff2,Tk2,Tri2,Tci2>
+      (weight2,feature2,output_core2,con,Base_addr34,Base_addr35,Base_addr36,
+      M2,N2,H2,C2,K2,S2);
+      
+      act2: tanh_layer(output_core2,weight2, M2,N2,C2,K2,Base_addr34,Base_addr36);
+      
       // conv2: conv_k_wrapper<
                              // TmBuff2, TnBuff2,Tr2,Tc2,Tm2,Tn2, TmBuff2,TnBuff2,Tk2,Tri2,Tci2>
       // (weight2,feature2,output_core2,con,Base_addr34,Base_addr35,Base_addr36,

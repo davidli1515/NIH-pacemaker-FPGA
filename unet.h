@@ -23,7 +23,7 @@ struct data_pack{
 struct dma_data{
 	data_pack data;
 };
-const int TmBuff1=2, TnBuff1=2,Tr1=4,Tc1=4,Tm1=2,Tn1=2,Tk1=7,Tri1=10,Tci1=10;
+const int TmBuff1=4, TnBuff1=2,Tr1=16,Tc1=16,Tm1=4,Tn1=2,Tk1=7,Tri1=22,Tci1=22;
 const int M1 = 48, N1=2,C1=16,H1=22, K1=7, S1=1;
 
 const int TmBuff2=2, TnBuff2=2,Tr2=4,Tc2=4,Tm2=2,Tn2=2,Tk2=5,Tri2=8,Tci2=8;
@@ -33,9 +33,9 @@ void unet_top (
 dma_data* weight1,
 dma_data* feature1,
 dma_data* output_core1,
-// dma_data* weight2,
+dma_data* weight2,
 dma_data* feature2,
-// dma_data* output_core2,
+dma_data* output_core2,
 // dma_data* weight3,
 // dma_data* feature3,
 // dma_data* output_core3,
@@ -115,9 +115,9 @@ int con,
  // ap_uint<32> Base_addr31,
  // ap_uint<32>  Base_addr32,
  // ap_uint<32>  Base_addr33,
- // ap_uint<32> Base_addr34,
+ap_uint<32> Base_addr34,
 ap_uint<32>  Base_addr35,
- // ap_uint<32>  Base_addr36,
+ap_uint<32>  Base_addr36,
 ap_uint<32> Base_addr37,
 ap_uint<32>  Base_addr38,
 ap_uint<32>  Base_addr39
