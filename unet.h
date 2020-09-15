@@ -29,6 +29,13 @@ const int M1 = 48, N1=2,C1=16,H1=22, K1=7, S1=1;
 const int TmBuff2=2, TnBuff2=2,Tr2=4,Tc2=4,Tm2=2,Tn2=2,Tk2=5,Tri2=8,Tci2=8;
 const int M2 = 96, N2=48,C2=8,H2=12, K2=5, S2=1;
 
+const int TmBuff3=16, TnBuff3=16,Tm3=16,Tn3=16;
+const int M3 = 60*4*4, N3=96*4*4, S3=1;
+
+const int TmBuff4=2, TnBuff4=2,Tm4=2,Tn4=2;
+const int M4 = 40*4*4, N4=60*4*4, S4=1;
+
+
 void unet_top (
 dma_data* weight1,
 dma_data* feature1,
@@ -36,12 +43,12 @@ dma_data* output_core1,
 dma_data* weight2,
 dma_data* feature2,
 dma_data* output_core2,
-// dma_data* weight3,
-// dma_data* feature3,
-// dma_data* output_core3,
-// dma_data* weight4,
+dma_data* weight3,
+dma_data* feature3,
+dma_data* output_core3,
+ dma_data* weight4,
 // dma_data* feature4,
-// dma_data* output_core4,
+ dma_data* output_core4,
 // dma_data* weight5,
 // dma_data* feature5,
 // dma_data* output_core5,
@@ -109,12 +116,12 @@ int con,
 //ap_uint<32> Base_addr25,
 //ap_uint<32>  Base_addr26,
 //ap_uint<32>  Base_addr27,
- // ap_uint<32> Base_addr28,
+  ap_uint<32> Base_addr28,
  // ap_uint<32>  Base_addr29,
- // ap_uint<32>  Base_addr30,
- // ap_uint<32> Base_addr31,
- // ap_uint<32>  Base_addr32,
- // ap_uint<32>  Base_addr33,
+  ap_uint<32>  Base_addr30,
+ap_uint<32> Base_addr31,
+ap_uint<32>  Base_addr32,
+ap_uint<32>  Base_addr33,
 ap_uint<32> Base_addr34,
 ap_uint<32>  Base_addr35,
 ap_uint<32>  Base_addr36,

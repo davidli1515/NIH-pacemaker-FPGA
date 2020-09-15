@@ -36,20 +36,23 @@ int main(){
     ifstream inputFile;
     data_type * flatten_weight=(data_type *)malloc((M1*N1*K1*K1+M1)*sizeof(data_type));
     data_type * flatten_input=(data_type *)malloc(N1*C1*C1*sizeof(data_type));
-    data_type * flatten_output=(data_type *)malloc(M1*C1*C1*sizeof(data_type));
+    //data_type * flatten_output=(data_type *)malloc(M1*C1*C1*sizeof(data_type));
     data_type * flatten_weight2=(data_type *)malloc((M2*N2*K2*K2+M2)*sizeof(data_type));
-    data_type * flatten_input2=(data_type *)malloc(N2*C2*C2*sizeof(data_type));
-    data_type * flatten_output2=(data_type *)malloc(M2*C2*C2*sizeof(data_type));
+    //data_type * flatten_input2=(data_type *)malloc(N2*C2*C2*sizeof(data_type));
+    //data_type * flatten_output2=(data_type *)malloc(M2*C2*C2*sizeof(data_type));
     
+    data_type * flatten_weight3=(data_type *)malloc((M3*N3+M3)*sizeof(data_type));
+    //data_type * flatten_input3=(data_type *)malloc(N3*sizeof(data_type));
+    data_type * flatten_weight4=(data_type *)malloc((M4*N4+M4)*sizeof(data_type));
     
     
     //modification anchor 
-    data_type * golden_output=(data_type *)malloc(M2*C2*C2*sizeof(data_type));
+    data_type * golden_output=(data_type *)malloc(M4*1*1*sizeof(data_type));
     inputFile.open("test_output.inc");
-    for(unsigned int i=0; i<M2; i++)
-	   for(unsigned int j=0; j<C2; j++)
-		   for(unsigned int k=0; k<C2; k++){
-			   inputFile>>golden_output[i*C2*C2+j*C2+k];
+    for(unsigned int i=0; i<M4; i++)
+	   for(unsigned int j=0; j<1; j++)
+		   for(unsigned int k=0; k<1; k++){
+			   inputFile>>golden_output[i];
 		   } 
     inputFile.close();
     
@@ -80,6 +83,32 @@ int main(){
     }
     inputFile.close();
     
+    inputFile.open("test_weight3.inc");
+    for(unsigned int i=0; i<M3;i++)
+       for(unsigned int j=0; j<N3;j++)
+           for(unsigned int k=0; k<1; k++)
+               for(unsigned int l=0; l<1; l++)
+               {
+            	   inputFile>>flatten_weight3[i*N3*1*1+j*1*1+k*1+l];
+               }
+    for(unsigned int i=0; i<M3;i++){
+        inputFile>>flatten_weight3[M3*N3*1*1+i];
+    }
+    inputFile.close();
+
+
+    inputFile.open("test_weight4.inc");
+    for(unsigned int i=0; i<M4;i++)
+       for(unsigned int j=0; j<N4;j++)
+           for(unsigned int k=0; k<1; k++)
+               for(unsigned int l=0; l<1; l++)
+               {
+            	   inputFile>>flatten_weight4[i*N4*1*1+j*1*1+k*1+l];
+               }
+    for(unsigned int i=0; i<M4;i++){
+        inputFile>>flatten_weight4[M4*N4*1*1+i];
+    }
+    inputFile.close();
     // cout<<M2*N2*K2*K2<<endl;
     // cout<<flatten_weight[0]<<',';
     // cout<<flatten_weight2[1]<<',';
@@ -106,7 +135,11 @@ int main(){
     dma_data * packed_weight2=(dma_data *)malloc((M2*N2*K2*K2+M2)/2*sizeof(dma_data));
     dma_data * packed_input2=(dma_data *)malloc(N2*C2*C2/2*sizeof(dma_data));
     dma_data * packed_output2=(dma_data *)malloc(M2*C2*C2/2*sizeof(dma_data));
-    
+    dma_data * packed_weight3=(dma_data *)malloc((M3*N3+M3)/2*sizeof(dma_data));
+    dma_data * packed_input3=(dma_data *)malloc(N3/2*sizeof(dma_data));
+    dma_data * packed_output3=(dma_data *)malloc(M3/2*sizeof(dma_data));
+    dma_data * packed_weight4=(dma_data *)malloc((M4*N4+M4)/2*sizeof(dma_data));
+    dma_data * packed_output4=(dma_data *)malloc(M4/2*sizeof(dma_data));
     //packing weight
     for(unsigned int i=0; i<M1;i+=2)
        for(unsigned int j=0; j<N1;j++)
@@ -134,7 +167,31 @@ int main(){
         packed_weight2[M2*N2*K2*K2/2+i/2].data.data1=flatten_weight2[M2*N2*K2*K2+i+1];
     }
     
+    for(unsigned int i=0; i<M3;i+=2)
+       for(unsigned int j=0; j<N3;j++)
+           for(unsigned int k=0; k<1; k++)
+               for(unsigned int l=0; l<1; l++)
+               {
+                   packed_weight3[i/2*N3+j].data.data0=flatten_weight3[i*N3+j];
+                   packed_weight3[i/2*N3+j].data.data1=flatten_weight3[(i+1)*N3+j];
+               }
+    for(unsigned int i=0; i<M3;i+=2){
+        packed_weight3[M3*N3/2+i/2].data.data0=flatten_weight3[M3*N3+i];
+        packed_weight3[M3*N3/2+i/2].data.data1=flatten_weight3[M3*N3+i+1];
+    }
     
+    for(unsigned int i=0; i<M4;i+=2)
+       for(unsigned int j=0; j<N4;j++)
+           for(unsigned int k=0; k<1; k++)
+               for(unsigned int l=0; l<1; l++)
+               {
+                   packed_weight4[i/2*N4+j].data.data0=flatten_weight4[i*N4+j];
+                   packed_weight4[i/2*N4+j].data.data1=flatten_weight4[(i+1)*N4+j];
+               }
+    for(unsigned int i=0; i<M4;i+=2){
+        packed_weight4[M4*N4/2+i/2].data.data0=flatten_weight4[M4*N4+i];
+        packed_weight4[M4*N4/2+i/2].data.data1=flatten_weight4[M4*N4+i+1];
+    }
     
     //packing input
     for(unsigned int i=0; i<N1; i+=2)
@@ -155,9 +212,11 @@ int main(){
         packed_weight2,
         packed_input2,
         packed_output2,
-        // dma_data* weight3,
-        // dma_data* feature3,
-        // dma_data* output_core3,
+        packed_weight3,
+        packed_input3,
+        packed_output3,
+		packed_weight4,
+		packed_output4,
         // dma_data* weight4,
         // dma_data* feature4,
         // dma_data* output_core4,
@@ -231,9 +290,11 @@ int main(){
          // ap_uint<32> Base_addr28,
          // ap_uint<32>  Base_addr29,
          // ap_uint<32>  Base_addr30,
-         // ap_uint<32> Base_addr31,
-         // ap_uint<32>  Base_addr32,
-         // ap_uint<32>  Base_addr33,
+        0x0000,
+        0x0000,
+        0x0000,
+        0x0000,
+        0x0000,
         0x0000,
         0x0000,
         0x0000,
@@ -281,6 +342,33 @@ int main(){
             break;
         }
     }
+    
+    for(unsigned int i=0; i<M3;i+=2)
+       for(unsigned int j=0; j<N3;j++)
+           for(unsigned int k=0; k<1; k++)
+               for(unsigned int l=0; l<1; l++)
+               {
+                tmp=packed_weight3[i/2*N3+j];
+                if (tmp.data.data0!= flatten_weight3[i*N3+j] || tmp.data.data1!= flatten_weight3[(i+1)*N3+j]){
+                    
+                    cout<<"weight3 failed"<<' ';
+                    cout<<tmp.data.data0<<' ';
+                    cout<<tmp.data.data1<<endl;
+                    break;
+                }
+               }
+    
+    for(unsigned int i=0; i<M3;i+=2){
+        tmp=packed_weight3[M3*N3/2+i/2];
+        
+        if (tmp.data.data0!= flatten_weight3[M3*N3+i] || tmp.data.data1!= flatten_weight3[M3*N3+i+1]){
+            
+            cout<<"weight3 bias failed"<<' ';
+            cout<<tmp.data.data0<<' ';
+            cout<<tmp.data.data1<<endl;
+            break;
+        }
+    }
     // dma_data tmp;
     // for(unsigned int i=0; i<N1; i+=2)
 	   // for(unsigned int j=0; j<C1; j++)
@@ -296,18 +384,18 @@ int main(){
                // }   
 
     //modification anchor
-    for(unsigned int i=0; i<M2; i+=2)
-	   for(unsigned int j=0; j<C2; j++)
-		   for(unsigned int k=0; k<C2; k++){
-                tmp=packed_output2[i/2*C2*C2+j*C2+k];
-                if (abs(tmp.data.data0-golden_output[i*C2*C2+j*C2+k])/golden_output[i*C2*C2+j*C2+k] > 0.1 
-                    || abs(tmp.data.data1-golden_output[(i+1)*C2*C2+j*C2+k])/golden_output[(i+1)*C2*C2+j*C2+k]>0.1){
+    for(unsigned int i=0; i<M4; i+=2)
+	   for(unsigned int j=0; j<1; j++)
+		   for(unsigned int k=0; k<1; k++){
+                tmp=packed_output4[i/2*1*1+j*1+k];
+                if (abs(tmp.data.data0-golden_output[i*1*1+j*1+k])/golden_output[i*1*1+j*1+k] > 0.1
+                    || abs(tmp.data.data1-golden_output[(i+1)*1*1+j*1+k])/golden_output[(i+1)*1*1+j*1+k]>0.1){
                     
                     cout<<"failed"<<' ';
                     cout<<tmp.data.data0<<',';
-                    cout<<golden_output[i*C2*C2+j*C2+k]<<endl;
+                    cout<<golden_output[i*1*1+j*1+k]<<endl;
                     cout<<tmp.data.data1<<',';
-                    cout<<golden_output[(i+1)*C2*C2+j*C2+k]<<endl;
+                    cout<<golden_output[(i+1)*1*1+j*1+k]<<endl;
                     cout<<i<<',';
                     cout<<j<<',';
                     cout<<k<<endl;
@@ -315,42 +403,42 @@ int main(){
                 }
                }   
 
-               
-    for(unsigned int i=0; i<M2; i+=2){
-	   for(unsigned int j=0; j<C2; j++){
-               cout<<'\n'<<' ';
-		   for(unsigned int k=0; k<C2; k++){
-			   cout<<packed_output2[i/2*C2*C2+j*C2+k].data.data0<<',';
-		   }
-       }
-	   for(unsigned int j=0; j<C2; j++){
-               cout<<'\n'<<' ';
-		   for(unsigned int k=0; k<C2; k++){
-			   cout<<packed_output2[i/2*C2*C2+j*C2+k].data.data1<<',';
-		   }
-       } 
+//
+//     for(unsigned int i=0; i<M2; i+=2){
+//	    for(unsigned int j=0; j<C2; j++){
+//                cout<<'\n'<<' ';
+//		    for(unsigned int k=0; k<C2; k++){
+//			    cout<<packed_output2[i/2*C2*C2+j*C2+k].data.data0<<',';
+//		    }
+//        }
+//	    for(unsigned int j=0; j<C2; j++){
+//                cout<<'\n'<<' ';
+//		    for(unsigned int k=0; k<C2; k++){
+//			    cout<<packed_output2[i/2*C2*C2+j*C2+k].data.data1<<',';
+//		    }
+//        }
+//
+//     }
+    // cout<<"\n=========================================================================\n"<<' ';
+    // cout<<"\n=========================================================================\n"<<' ';
+    // cout<<"\n=========================================================================\n"<<' ';
+    // cout<<"\n=========================================================================\n"<<' ';
+    // cout<<"\n=========================================================================\n"<<' ';
+    // for(unsigned int i=0; i<M1; i+=2){
+	   // for(unsigned int j=0; j<C2; j++){
+               // cout<<'\n'<<' ';
+		   // for(unsigned int k=0; k<C2; k++){
+			   // cout<<packed_input2[i/2*C2*C2+j*C2+k].data.data0<<',';
+		   // }
+       // }
+	   // for(unsigned int j=0; j<C2; j++){
+               // cout<<'\n'<<' ';
+		   // for(unsigned int k=0; k<C2; k++){
+			   // cout<<packed_input2[i/2*C2*C2+j*C2+k].data.data1<<',';
+		   // }
+       // }
                       
-    }
-    cout<<"\n=========================================================================\n"<<' ';
-    cout<<"\n=========================================================================\n"<<' ';
-    cout<<"\n=========================================================================\n"<<' ';
-    cout<<"\n=========================================================================\n"<<' ';
-    cout<<"\n=========================================================================\n"<<' ';
-    for(unsigned int i=0; i<M1; i+=2){
-	   for(unsigned int j=0; j<C2; j++){
-               cout<<'\n'<<' ';
-		   for(unsigned int k=0; k<C2; k++){
-			   cout<<packed_input2[i/2*C2*C2+j*C2+k].data.data0<<',';
-		   }
-       }
-	   for(unsigned int j=0; j<C2; j++){
-               cout<<'\n'<<' ';
-		   for(unsigned int k=0; k<C2; k++){
-			   cout<<packed_input2[i/2*C2*C2+j*C2+k].data.data1<<',';
-		   }
-       }
-                      
-    } 
+    // } 
     return 0;
 
 }
