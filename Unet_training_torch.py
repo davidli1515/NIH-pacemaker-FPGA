@@ -19,7 +19,8 @@ from tqdm._utils import _term_move_up
 from tqdm import tqdm
 from datetime import datetime
 now = datetime.now()
-wandb.init(project='nih_project',name=str(now))
+pruning_ratio=[0.9,0.9,0.9]
+wandb.init(project='nih_project',name=str(pruning_ratio)+str(now))
 freq = 10
 dim = 16
 learning_rate = 0.000001
@@ -76,7 +77,7 @@ num_test_examples = shape_test[0]
 batch_size = 16
 batch_num = int(math.ceil(num_train_examples/batch_size))
 print("Number of batches: ", batch_num)
-n_epochs = 300
+n_epochs = 600
 save_steps = batch_num/1 * n_epochs  # Number of training batches between checkpoint saves
 
 
@@ -91,7 +92,7 @@ if data_normalize:
     labels_train=(labels_train-mean_train_y)/std_train_y
     
 train_set=TensorDataset(torch.tensor(data_train),torch.tensor(labels_train))
-train_loader=DataLoader(train_set,batch_size=int(batch_size),num_workers=8)
+train_loader=DataLoader(train_set,batch_size=int(batch_size),num_workers=0)
 
 
 if data_normalize:
@@ -100,7 +101,7 @@ if data_normalize:
     labels_test=(labels_test-mean_train_y)/std_train_y
 
 test_set=TensorDataset(torch.tensor(data_test),torch.tensor(labels_test))
-test_loader=DataLoader(test_set,batch_size=int(batch_size),num_workers=8)
+test_loader=DataLoader(test_set,batch_size=int(batch_size),num_workers=0)
 
 # data_test=torch.tensor(data_test)
 # labels_test=torch.tensor(labels_test)
@@ -311,6 +312,108 @@ for epoch in pbar:  # loop over the dataset multiple times
             running_loss = 0.0
             wandb.log({'Train/loss': train_loss_logged/5,'steps': steps})
     steps+=1
+    
+    
+    #pruning conv
+    percent=pruning_ratio[0]
+    total = 0
+    for m in net.modules():
+        if isinstance(m, nn.Conv2d):
+            total += m.weight.data.numel()
+    conv_weights = torch.zeros(total)
+    index = 0
+    for m in net.modules():
+        if isinstance(m, nn.Conv2d):
+            size = m.weight.data.numel()
+            conv_weights[index:(index+size)] = m.weight.data.view(-1).abs().clone()
+            index += size
+
+    y, i = torch.sort(conv_weights)
+    thre_index = int(total * percent)
+    thre = y[thre_index]
+    pruned = 0
+    print('Pruning threshold: {}'.format(thre))
+    zero_flag = False
+    for k, m in enumerate(net.modules()):
+        if isinstance(m, nn.Conv2d):
+            weight_copy = m.weight.data.abs().clone()
+            mask = weight_copy.gt(thre).float().cuda()
+            pruned = pruned + mask.numel() - torch.sum(mask)
+            m.weight.data.mul_(mask)
+            if int(torch.sum(mask)) == 0:
+                zero_flag = True
+            print('layer index: {:d} \t total params: {:d} \t remaining params: {:d}'.
+                format(k, mask.numel(), int(torch.sum(mask))))
+    print('Total conv params: {}, Pruned conv params: {}, Pruned ratio: {}'.format(total, pruned, pruned/total))
+    
+
+
+    #pruning fc
+    percent=pruning_ratio[1]
+    total = 0
+    for m in net.modules():
+        if isinstance(m, nn.Linear):
+            total += m.weight.data.numel()
+    conv_weights = torch.zeros(total)
+    index = 0
+    for m in net.modules():
+        if isinstance(m, nn.Linear):
+            size = m.weight.data.numel()
+            conv_weights[index:(index+size)] = m.weight.data.view(-1).abs().clone()
+            index += size
+
+    y, i = torch.sort(conv_weights)
+    thre_index = int(total * percent)
+    thre = y[thre_index]
+    pruned = 0
+    print('Pruning threshold: {}'.format(thre))
+    zero_flag = False
+    for k, m in enumerate(net.modules()):
+        if isinstance(m, nn.Linear):
+            weight_copy = m.weight.data.abs().clone()
+            mask = weight_copy.gt(thre).float().cuda()
+            pruned = pruned + mask.numel() - torch.sum(mask)
+            m.weight.data.mul_(mask)
+            if int(torch.sum(mask)) == 0:
+                zero_flag = True
+            print('layer index: {:d} \t total params: {:d} \t remaining params: {:d}'.
+                format(k, mask.numel(), int(torch.sum(mask))))
+    print('Total Linear params: {}, Pruned Linear params: {}, Pruned ratio: {}'.format(total, pruned, pruned/total))
+
+
+    #pruning deconv
+    percent=pruning_ratio[2]
+    total = 0
+    for m in net.modules():
+        if isinstance(m, nn.ConvTranspose2d):
+            total += m.weight.data.numel()
+    conv_weights = torch.zeros(total)
+    index = 0
+    for m in net.modules():
+        if isinstance(m, nn.ConvTranspose2d):
+            size = m.weight.data.numel()
+            conv_weights[index:(index+size)] = m.weight.data.view(-1).abs().clone()
+            index += size
+
+    y, i = torch.sort(conv_weights)
+    thre_index = int(total * percent)
+    thre = y[thre_index]
+    pruned = 0
+    print('Pruning threshold: {}'.format(thre))
+    zero_flag = False
+    for k, m in enumerate(net.modules()):
+        if isinstance(m, nn.ConvTranspose2d):
+            weight_copy = m.weight.data.abs().clone()
+            mask = weight_copy.gt(thre).float().cuda()
+            pruned = pruned + mask.numel() - torch.sum(mask)
+            m.weight.data.mul_(mask)
+            if int(torch.sum(mask)) == 0:
+                zero_flag = True
+            print('layer index: {:d} \t total params: {:d} \t remaining params: {:d}'.
+                format(k, mask.numel(), int(torch.sum(mask))))
+    print('Total ConvTranspose2d params: {}, Pruned ConvTranspose2d params: {}, Pruned ratio: {}'.format(total, pruned, pruned/total))
+
+    
     running_loss_test=0
     for ti, tdata in enumerate(test_loader, 0):
         # get the inputs; data is a list of [inputs, labels]
@@ -321,5 +424,7 @@ for epoch in pbar:  # loop over the dataset multiple times
         toutputs = net(tinputs)
         tloss=correlation(toutputs, tlabels.view(-1,dim*dim*24))
         running_loss_test+=tloss.item()
+        #allc, corr = find_correlation(toutputs.view(-1,24,dim,dim).cpu().data, tlabels.cpu().data)
+        #print('averaged correlation: ', corr)
     print('test loss: ',running_loss_test/(ti+1))
     wandb.log({'Test/loss': running_loss_test/(ti+1), 'epochs': epoch})
