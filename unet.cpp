@@ -37,6 +37,58 @@ void read_ifmap_conv2d(data_type feature_temp[Tn][Tr][Tc], dma_data* feature, in
 
 
 
+
+// template < int Tn>
+// void read_ifmap_conv_fc(data_type feature_temp[Tn][1][1], dma_data* feature,int ti,int N, int C,ap_uint<32> Base_addr2){
+// #pragma HLS INLINE off
+	// dma_data tmp;
+	// int tii, input_channel, row, col;
+	// for (tii = 0; tii < Tn; tii+=2) {
+		// #pragma HLS PIPELINE
+        // input_channel=(int)((tii+ti/2)/(C*C));
+        // row=(int)((tii+ti-input_channel*C*C)/C);
+        // width=(int)(tii+ti-input_channel*C*C-row*C);
+        // tmp=feature[(tii+ti)/2 +Base_addr2/dataw];
+        // feature_temp[tii][0][0] = tmp.data.data0;
+        // feature_temp[tii+1][0][0] = tmp.data.data1;
+
+	// }
+// }
+
+
+template < int Tn>
+void read_ifmap_fc(data_type feature_temp[Tn][1][1], dma_data* feature,int ti, ap_uint<32> Base_addr2){
+#pragma HLS INLINE off
+	dma_data tmp;
+	int tii;
+	for (tii = 0; tii < Tn; tii+=2) {
+		#pragma HLS PIPELINE
+        tmp=feature[(tii+ti)/2 +Base_addr2/dataw];
+        feature_temp[tii][0][0] = tmp.data.data0;
+        feature_temp[tii+1][0][0] = tmp.data.data1;
+
+	}
+}
+
+template <int Tm,int Tn>
+void read_we1(data_type weight_temp[Tm][Tn][1][1],dma_data* weight, int to, int ti,
+               int N, ap_uint<32> Base_addr1){
+#pragma HLS INLINE
+	int too,tii;
+	dma_data tmp;
+
+	for (too = 0; too < Tm; too+=2) {
+        for (tii = 0; tii < Tn; tii++) {
+            #pragma HLS PIPELINE
+            tmp= weight[(too + to)/2*N +(tii+ti) +Base_addr1/dataw];
+            weight_temp[too][tii][0][0] = tmp.data.data0;
+            weight_temp[too+1][tii][0][0] = tmp.data.data1;
+
+        }
+	}
+}
+
+
 template < int Tk, int Tm,int Tn>
 void read_wek(data_type weight_temp[Tm][Tn][Tk][Tk],dma_data* weight, int to, int ti,
              int K, int N, ap_uint<32> Base_addr1){
@@ -92,6 +144,38 @@ void comp_engine_conv_2d(
                     }
                 }
             }
+        }
+    }
+}
+
+
+
+template <int TmBuff, int TnBuff,int Tm, int Tn,int TmW, int TnW>
+void comp_engine_fc(
+				 data_type weight_temp[TmW][TnW][1][1], data_type feature_temp[TnBuff][1][1],data_type output_core_temp[TmBuff][1][1],
+                 int S
+                 ){
+#pragma HLS INLINE off
+	int too,tii,tncomp,tmcomp;
+    data_type tmp1;
+	//TODO: balanced unrolling input channel and output channel
+    for(tncomp=0;tncomp <TnBuff;tncomp+=Tn){
+        for(tmcomp=0;tmcomp <TmBuff;tmcomp+=Tm){    
+            #pragma HLS PIPELINE
+            for (tii = 0; tii < Tn; ++tii) {
+                #pragma HLS UNROLL
+                #pragma HLS DEPENDENCE variable=feature_temp inter false
+                tmp1=feature_temp[tncomp+tii][0][0];
+                for (too = 0; too < Tm; ++too) {
+                    #pragma HLS DEPENDENCE variable=output_core_temp inter false
+                    #pragma HLS UNROLL
+                    output_core_temp[tmcomp+too][0][0]+=
+                    tmp1*weight_temp[tmcomp+too][tncomp+tii][0][0];
+                                
+                }
+            }
+                            
+
         }
     }
 }
@@ -217,6 +301,156 @@ void single_conv_k(
 
 
 template <
+int TmBuff, int TnBuff, int Tm, int Tn,int TmW,int TnW
+>
+void single_fc(
+                        dma_data* weight,
+                        dma_data* feature,
+                        dma_data* output_core,
+                        ap_uint<32> Base_addr1,
+                        ap_uint<32>  Base_addr2,
+                        ap_uint<32>  Base_addr3,
+                       data_type output_core_temp[TmBuff][1][1],data_type weight_temp[TmW][TnW][1][1],
+                       data_type feature_temp[TnBuff][1][1] , data_type feature_temp1[TnBuff][1][1],
+                       int M, int N,int S,
+                       dma_data tmp,
+                        int to, int ti, 
+                        int too, int tii,
+                        int ti_r,
+                        int lr_i
+                       )
+{
+    
+    
+    //TODO: buffer initialization
+	read_ifmap_fc<TnBuff>(feature_temp, feature,0,Base_addr2);
+	for (to = 0; to < M; to += TmBuff) {
+		for (ti = 0; ti < N; ti += TnBuff) {
+			read_we1<TmW,TnW>(weight_temp,weight,to,ti,N,Base_addr1);
+			//read_ifmap_conv2d<Tri,Tci,TnBuff>(feature_temp,feature,tr,ti,tc,H,C,K,Base_addr2);
+			//comp_engine_conv_2d<Tr,Tc,TmBuff,TnBuff,Tm,Tn,TmW,TnW,Tri,Tci,Tk>(weight_temp,feature_temp,output_core_temp,K,S);
+
+			if (lr_i==0){
+
+				//ping pong logic for index shifting
+				//ti_r=ti;
+				ti_r=ti+TnBuff;
+				if (ti_r==N){
+					ti_r=0;
+				}
+				//TODO: controlling port to switch
+				read_ifmap_fc<TnBuff>(feature_temp1,feature,ti_r,Base_addr2);
+				comp_engine_fc<TmBuff,TnBuff,Tm,Tn,TmW,TnW>(weight_temp,feature_temp,output_core_temp,S);
+				lr_i=1-lr_i;
+			}
+			else{
+
+
+				//ping pong logic for index shifting
+				//ti_r=ti;
+				ti_r=ti+TnBuff;
+				if (ti_r==N){
+					ti_r=0;
+				}
+				//TODO: controlling port to switch
+				read_ifmap_fc<TnBuff>(feature_temp,feature,ti_r,Base_addr2);
+				comp_engine_fc<TmBuff,TnBuff,Tm,Tn,TmW,TnW>(weight_temp,feature_temp1,output_core_temp,S);
+				lr_i=1-lr_i;
+			}
+
+		}
+
+	for (too = 0; too < TmBuff; too+=2) {
+		#pragma HLS PIPELINE
+		tmp.data.data0=output_core_temp[too][0][0];
+		tmp.data.data1=output_core_temp[too+1][0][0];
+		output_core[(too + to)/2+Base_addr3/dataw]=tmp;
+
+	}
+
+
+	for (too = 0; too < TmBuff; ++too) {
+		#pragma HLS UNROLL
+			output_core_temp[too][0][0] = 0;
+	}
+
+
+
+	}
+
+   
+                       
+}
+
+
+template <
+int TmBuff, int TnBuff,  int Tm, int Tn, int TmW, int TnW
+>
+void fc_wrapper(
+		dma_data* weight,
+		dma_data* feature,
+		dma_data* output_core,
+	int con,
+	ap_uint<32> Base_addr1,
+	ap_uint<32>  Base_addr2,
+	ap_uint<32>  Base_addr3,
+    int temp_M,int temp_N , int temp_S) {
+	dma_data tmp;
+	int to, ti, too, tii;
+    int ti_r;
+	int lr_i=0;
+
+	data_type output_core_temp[TmBuff][1][1] = { 0 };
+	#pragma HLS ARRAY_PARTITION variable=output_core_temp complete dim=1
+	//#pragma HLS ARRAY_PARTITION variable=output_core_temp block factor=Tr/2 dim=2
+	//#pragma HLS ARRAY_PARTITION variable=output_core_temp complete dim=3
+	#pragma HLS RESOURCE variable=output_core_temp core=RAM_2P_BRAM
+
+	data_type weight_temp[TmW][TnW][1][1] = { 0}, feature_temp[TnBuff][1][1] = { 0 };
+	#pragma HLS RESOURCE variable=feature_temp core=RAM_2P_BRAM
+	//#pragma HLS RESOURCE variable=weight_temp core=RAM_2P_BRAM
+	#pragma HLS RESOURCE variable=weight_temp core=RAM_2P_LUTRAM
+
+	#pragma HLS ARRAY_PARTITION variable=feature_temp complete dim=1
+	//#pragma HLS ARRAY_PARTITION variable=feature_temp complete dim=2
+	//#pragma HLS ARRAY_PARTITION variable=feature_temp complete dim=3
+	#pragma HLS ARRAY_PARTITION variable=weight_temp complete dim=1
+    #pragma HLS ARRAY_PARTITION variable=weight_temp complete dim=2
+	//#pragma HLS ARRAY_PARTITION variable=weight_temp complete dim=3
+	//#pragma HLS ARRAY_PARTITION variable=weight_temp complete dim=4
+
+	data_type feature_temp1[TnBuff][1][1] = { 0 };
+	#pragma HLS RESOURCE variable=feature_temp1 core=RAM_2P_BRAM
+	#pragma HLS ARRAY_PARTITION variable=feature_temp1 complete dim=1
+	//#pragma HLS ARRAY_PARTITION variable=feature_temp1 complete dim=2
+	//#pragma HLS ARRAY_PARTITION variable=feature_temp1 complete dim=3
+    
+
+    if(con==0x00000001){
+        //Expand
+        #pragma HLS allocation instances=dw_comp_engine2_111 limit=1 function
+        
+     single_fc<TmBuff,TnBuff,Tm,Tn,TmW,TnW>
+                     (       weight,
+                             feature,
+                             output_core,
+                             Base_addr1,
+                             Base_addr2,
+                             Base_addr3,
+                             output_core_temp,weight_temp,
+                             feature_temp, feature_temp1,
+                             temp_M,temp_N, temp_S,
+                             tmp,
+                             to, ti, too, tii,
+                             ti_r,
+                             lr_i
+                       );
+    }
+}
+
+
+
+template <
 int TmBuff, int TnBuff,  int Tr, int Tc, int Tm, int Tn, int TmW, int TnW, int Tk,int Tri,int Tci
 >
 void conv_k_wrapper(
@@ -262,7 +496,7 @@ void conv_k_wrapper(
 
     if(con==0x00000001){
         //Expand
-        #pragma HLS allocation instances=dw_comp_engine2_111 limit=1 function
+        #pragma HLS allocation instances=single_conv_k limit=1 function
         
      single_conv_k<TmBuff,TnBuff,Tr, Tc, Tm,Tn,TmW,TnW, Tk,Tri,Tci>
                      (       weight,
@@ -302,6 +536,23 @@ void tanh_layer(dma_data* output_core,dma_data* weight,
 
 }
 
+void tanh_layer_fc(dma_data* output_core,dma_data* weight,
+                int M, int N,
+                ap_uint<32> Base_addr2,ap_uint<32> Base_addr3){
+    dma_data tmp,tmp1;
+    int tm;
+    for (tm=0; tm<M;tm+=2)
+    {
+        #pragma HLS PIPELINE
+        tmp=output_core[(tm)/2+Base_addr3/dataw];
+        tmp1=weight[M*N/2+tm/2+Base_addr2/dataw];
+        tmp.data.data0=tanhf(tmp.data.data0+tmp1.data.data0);
+        tmp.data.data1=tanhf(tmp.data.data1+tmp1.data.data1);
+        output_core[(tm)/2+Base_addr3/dataw]=tmp;
+    }
+
+}
+
 void max_pool(dma_data* input_next,dma_data* output,
                 int M, int C_next,int C,
                 ap_uint<32> Base_addr2,ap_uint<32> Base_addr3){
@@ -318,8 +569,8 @@ void max_pool(dma_data* input_next,dma_data* output,
                 tmp2=output[(tm)/2*C*C + (tc+1)*C +tr+Base_addr3/dataw];
                 tmp3=output[(tm)/2*C*C + (tc)*C +tr+1+Base_addr3/dataw];
                 tmp4=output[(tm)/2*C*C + (tc+1)*C +tr+1+Base_addr3/dataw];
-                max_tmp.data.data0=max(max(tmp1.data.data0,tmp2.data.data0),max(tmp3.data.data0,tmp4.data.data0));
-                max_tmp.data.data1=max(max(tmp1.data.data1,tmp2.data.data1),max(tmp3.data.data1,tmp4.data.data1));
+                max_tmp.data.data0=fmax(fmax(tmp1.data.data0,tmp2.data.data0),fmax(tmp3.data.data0,tmp4.data.data0));
+                max_tmp.data.data1=fmax(fmax(tmp1.data.data1,tmp2.data.data1),fmax(tmp3.data.data1,tmp4.data.data1));
                 input_next[(tm)/2*C_next*C_next + (tc/2)*C_next +tr/2+Base_addr2/dataw]=max_tmp;
             }
 }
@@ -331,12 +582,12 @@ dma_data* output_core1,
 dma_data* weight2,
 dma_data* feature2,
 dma_data* output_core2,
-// dma_data* weight3,
-// dma_data* feature3,
-// dma_data* output_core3,
-// dma_data* weight4,
+dma_data* weight3,
+dma_data* feature3,
+dma_data* output_core3,
+ dma_data* weight4,
 // dma_data* feature4,
-// dma_data* output_core4,
+ dma_data* output_core4,
 // dma_data* weight5,
 // dma_data* feature5,
 // dma_data* output_core5,
@@ -404,12 +655,12 @@ int con,
 //ap_uint<32> Base_addr25,
 //ap_uint<32>  Base_addr26,
 //ap_uint<32>  Base_addr27,
- // ap_uint<32> Base_addr28,
+  ap_uint<32> Base_addr28,
  // ap_uint<32>  Base_addr29,
- // ap_uint<32>  Base_addr30,
- // ap_uint<32> Base_addr31,
- // ap_uint<32>  Base_addr32,
- // ap_uint<32>  Base_addr33,
+  ap_uint<32>  Base_addr30,
+ap_uint<32> Base_addr31,
+ap_uint<32>  Base_addr32,
+ap_uint<32>  Base_addr33,
 ap_uint<32> Base_addr34,
 ap_uint<32>  Base_addr35,
 ap_uint<32>  Base_addr36,
@@ -453,26 +704,26 @@ ap_uint<32>  Base_addr39
 #pragma HLS data_pack variable=feature2
 #pragma HLS data_pack variable=output_core2
 
-// #pragma HLS INTERFACE s_axilite port=Base_addr31 bundle=CRTL_BUS
-// #pragma HLS INTERFACE s_axilite port=Base_addr32 bundle=CRTL_BUS
-// #pragma HLS INTERFACE s_axilite port=Base_addr33 bundle=CRTL_BUS
-// #pragma HLS INTERFACE m_axi depth=M2*N2*K2*K2/4 port=weight3
-// #pragma HLS INTERFACE m_axi depth=N2*H2*H2/4 port=feature3
-// #pragma HLS INTERFACE m_axi depth=M2*C2*C3/4 port=output_core3
-// #pragma HLS data_pack variable=weight3
-// #pragma HLS data_pack variable=feature3
-// #pragma HLS data_pack variable=output_core3
+#pragma HLS INTERFACE s_axilite port=Base_addr31 bundle=CRTL_BUS
+#pragma HLS INTERFACE s_axilite port=Base_addr32 bundle=CRTL_BUS
+#pragma HLS INTERFACE s_axilite port=Base_addr33 bundle=CRTL_BUS
+#pragma HLS INTERFACE m_axi depth=M3*N3/2 port=weight3
+#pragma HLS INTERFACE m_axi depth=N3/2 port=feature3
+#pragma HLS INTERFACE m_axi depth=M3/2 port=output_core3
+#pragma HLS data_pack variable=weight3
+#pragma HLS data_pack variable=feature3
+#pragma HLS data_pack variable=output_core3
 
 
-// #pragma HLS INTERFACE s_axilite port=Base_addr28 bundle=CRTL_BUS
+ #pragma HLS INTERFACE s_axilite port=Base_addr28 bundle=CRTL_BUS
 // #pragma HLS INTERFACE s_axilite port=Base_addr29 bundle=CRTL_BUS
-// #pragma HLS INTERFACE s_axilite port=Base_addr30 bundle=CRTL_BUS
-// #pragma HLS INTERFACE m_axi depth=M3*N3*K3*K3/4 port=weight4
-// #pragma HLS INTERFACE m_axi depth=N3*H3*H3/4 port=feature4
-// #pragma HLS INTERFACE m_axi depth=M3*C3*C3/4 port=output_core4
-// #pragma HLS data_pack variable=weight4
+ #pragma HLS INTERFACE s_axilite port=Base_addr30 bundle=CRTL_BUS
+ #pragma HLS INTERFACE m_axi depth=M4*N4/2 port=weight4
+// #pragma HLS INTERFACE m_axi depth=N4/2 port=feature4
+ #pragma HLS INTERFACE m_axi depth=M4/2 port=output_core4
+ #pragma HLS data_pack variable=weight4
 // #pragma HLS data_pack variable=feature4
-// #pragma HLS data_pack variable=output_core4
+ #pragma HLS data_pack variable=output_core4
 
 
 // #pragma HLS INTERFACE s_axilite port=Base_addr1 bundle=CRTL_BUS
@@ -625,25 +876,42 @@ ap_uint<32>  Base_addr39
 //	conv15:conv1_1_1<M21,N21,SE21,OM21,H21,C21,HFD21,CFD21,K21,S21,Tr21,Tc21,Tm21,Tn21,Tm21,Tm21>(weight16,feature16,output_core16,con,Base_addr46,Base_addr47,Base_addr48);
 	// conv16:conv1_1_1<M16,N16,SE16,OM16,H16,C16,HFD16,CFD16,K16,S16,Tr16,Tc16,Tm16,Tn16,Tm16,Tm16>(weight17,feature17,output_core17,con,Base_addr49,Base_addr50,Base_addr51);
 
-      conv1: conv_k_wrapper<
-                             TmBuff1, TnBuff1,Tr1,Tc1,Tm1,Tn1, TmBuff1,TnBuff1,Tk1,Tri1,Tci1>
-      (weight1,feature1,output_core1,con,Base_addr37,Base_addr38,Base_addr39,
-      M1,N1,H1,C1,K1,S1);
+
+
+//      conv1: conv_k_wrapper<
+//                             TmBuff1, TnBuff1,Tr1,Tc1,Tm1,Tn1, TmBuff1,TnBuff1,Tk1,Tri1,Tci1>
+//      (weight1,feature1,output_core1,con,Base_addr37,Base_addr38,Base_addr39,
+//      M1,N1,H1,C1,K1,S1);
+//
+//
+//      act1: tanh_layer(output_core1,weight1, M1,N1,C1,K1,Base_addr37,Base_addr39);
+//
+//      max1: max_pool(feature2,output_core1,M1,C2,C1,Base_addr35,Base_addr39);
+//
       
       
-      act1: tanh_layer(output_core1,weight1, M1,N1,C1,K1,Base_addr37,Base_addr39);
+//      conv2: conv_k_wrapper<
+//                             TmBuff2, TnBuff2,Tr2,Tc2,Tm2,Tn2, TmBuff2,TnBuff2,Tk2,Tri2,Tci2>
+//      (weight2,feature2,output_core2,con,Base_addr34,Base_addr35,Base_addr36,
+//      M2,N2,H2,C2,K2,S2);
+//
+//      act2: tanh_layer(output_core2,weight2, M2,N2,C2,K2,Base_addr34,Base_addr36);
+//
+//      max2: max_pool(feature3,output_core2,M2,C2/2,C2,Base_addr32,Base_addr36);
       
-      max1: max_pool(feature2,output_core1,M1,C2,C1,Base_addr35,Base_addr39);
-      
-      
-      
-      conv2: conv_k_wrapper<
-                             TmBuff2, TnBuff2,Tr2,Tc2,Tm2,Tn2, TmBuff2,TnBuff2,Tk2,Tri2,Tci2>
-      (weight2,feature2,output_core2,con,Base_addr34,Base_addr35,Base_addr36,
-      M2,N2,H2,C2,K2,S2);
-      
-      act2: tanh_layer(output_core2,weight2, M2,N2,C2,K2,Base_addr34,Base_addr36);
-      
+      fc1: fc_wrapper<
+                      TmBuff3, TnBuff3,Tm3,Tn3,TmBuff3,TnBuff3>
+      (weight3,feature3,output_core3,con,Base_addr31,Base_addr32,Base_addr33,
+      M3,N3,S3);
+//      act3: tanh_layer_fc(output_core3,weight3, M3,N3,Base_addr31,Base_addr33);
+
+
+//      fc2: fc_wrapper<
+//                      TmBuff4, TnBuff4,Tm4,Tn4,TmBuff4,TnBuff4>
+//      (weight4,output_core3,output_core4,con,Base_addr28,Base_addr33,Base_addr30,
+//      M4,N4,S4);
+//      act4: tanh_layer_fc(output_core4,weight4, M4,N4,Base_addr28,Base_addr30);
+
       // conv2: conv_k_wrapper<
                              // TmBuff2, TnBuff2,Tr2,Tc2,Tm2,Tn2, TmBuff2,TnBuff2,Tk2,Tri2,Tci2>
       // (weight2,feature2,output_core2,con,Base_addr34,Base_addr35,Base_addr36,
